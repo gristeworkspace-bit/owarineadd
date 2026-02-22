@@ -716,7 +716,7 @@ td.price-cell.loading {
 }
 
 /* ============================================
-   Responsive
+   Responsive — Tablet
    ============================================ */
 @media (max-width: 768px) {
     .app-container {
@@ -724,19 +724,58 @@ td.price-cell.loading {
     }
 
     .app-header {
-        padding: 32px 12px 28px;
+        padding: 28px 12px 24px;
     }
 
     .app-header h1 {
-        font-size: 1.5rem;
+        font-size: 1.35rem;
+        gap: 8px;
+    }
+
+    .app-header .icon {
+        font-size: 1.4rem;
+    }
+
+    .app-header .subtitle {
+        font-size: 0.85rem;
+    }
+
+    .header-glow {
+        width: 300px;
+        height: 120px;
     }
 
     .card {
         padding: 20px 16px;
+        border-radius: var(--radius-md);
+        margin-bottom: 14px;
+    }
+
+    .card h2 {
+        font-size: 1rem;
+        margin-bottom: 16px;
+    }
+
+    .info-banner {
+        padding: 14px 16px;
+    }
+
+    .info-banner .info-text {
+        font-size: 0.82rem;
+        line-height: 1.6;
     }
 
     .settings-grid {
-        grid-template-columns: 1fr;
+        grid-template-columns: 1fr 1fr;
+        gap: 14px;
+    }
+
+    .settings-grid .setting-item:first-child {
+        grid-column: 1 / -1;
+    }
+
+    .stat-value {
+        font-size: 1.4rem;
     }
 
     .results-stats {
@@ -749,11 +788,16 @@ td.price-cell.loading {
     }
 
     .result-stat-value {
-        font-size: 1.4rem;
+        font-size: 1.5rem;
     }
 
     .drop-zone {
         padding: 32px 16px;
+    }
+
+    .drop-icon svg {
+        width: 48px;
+        height: 48px;
     }
 
     .action-buttons {
@@ -762,6 +806,199 @@ td.price-cell.loading {
 
     .btn {
         justify-content: center;
+        padding: 14px 24px;
+        font-size: 0.95rem;
+    }
+
+    /* テーブル：横スクロールのヒント */
+    .table-wrapper {
+        position: relative;
+    }
+
+    .table-wrapper::after {
+        content: '';
+        position: absolute;
+        top: 0;
+        right: 0;
+        width: 40px;
+        height: 100%;
+        background: linear-gradient(to right, transparent, rgba(10, 10, 20, 0.8));
+        pointer-events: none;
+        z-index: 2;
+    }
+
+    table {
+        font-size: 0.75rem;
+    }
+
+    thead th {
+        padding: 10px 10px;
+        font-size: 0.65rem;
+    }
+
+    tbody td {
+        padding: 8px 10px;
+    }
+
+    .table-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 8px;
+    }
+
+    .error-log {
+        max-height: 180px;
+        font-size: 0.72rem;
+    }
+
+    .app-footer {
+        font-size: 0.7rem;
+        padding: 16px 12px;
+    }
+}
+
+/* ============================================
+   Responsive — Mobile
+   ============================================ */
+@media (max-width: 480px) {
+    .app-container {
+        padding: 8px 8px 24px;
+    }
+
+    .app-header {
+        padding: 20px 8px 16px;
+    }
+
+    .app-header h1 {
+        font-size: 1.1rem;
+        gap: 6px;
+    }
+
+    .app-header .icon {
+        font-size: 1.2rem;
+    }
+
+    .app-header .subtitle {
+        font-size: 0.78rem;
+    }
+
+    .header-glow {
+        display: none;
+    }
+
+    .card {
+        padding: 16px 12px;
+        border-radius: var(--radius-sm);
+        margin-bottom: 10px;
+    }
+
+    .card h2 {
+        font-size: 0.92rem;
+        margin-bottom: 12px;
+    }
+
+    .info-banner {
+        padding: 12px;
+    }
+
+    .info-banner .info-text {
+        font-size: 0.78rem;
+    }
+
+    .settings-grid {
+        grid-template-columns: 1fr 1fr;
+        gap: 10px;
+    }
+
+    .setting-item label {
+        font-size: 0.7rem;
+    }
+
+    .setting-item select {
+        font-size: 0.82rem;
+        padding: 8px 10px;
+    }
+
+    .stat-value {
+        font-size: 1.2rem;
+    }
+
+    .drop-zone {
+        padding: 24px 12px;
+    }
+
+    .drop-icon svg {
+        width: 40px;
+        height: 40px;
+    }
+
+    .drop-text {
+        font-size: 0.88rem;
+    }
+
+    .drop-subtext {
+        font-size: 0.75rem;
+    }
+
+    .file-select-btn {
+        padding: 10px 24px;
+        font-size: 0.85rem;
+    }
+
+    .file-info {
+        padding: 10px 12px;
+        gap: 8px;
+    }
+
+    .file-name {
+        font-size: 0.82rem;
+    }
+
+    .file-size {
+        font-size: 0.72rem;
+    }
+
+    .btn {
+        padding: 12px 20px;
+        font-size: 0.88rem;
+    }
+
+    .results-stats {
+        gap: 6px;
+    }
+
+    .result-stat {
+        padding: 10px 6px;
+    }
+
+    .result-stat-value {
+        font-size: 1.2rem;
+    }
+
+    .result-stat-label {
+        font-size: 0.68rem;
+    }
+
+    table {
+        font-size: 0.7rem;
+    }
+
+    thead th {
+        padding: 8px 8px;
+        font-size: 0.6rem;
+    }
+
+    tbody td {
+        padding: 7px 8px;
+    }
+
+    .progress-label,
+    .progress-value {
+        font-size: 0.78rem;
+    }
+
+    .progress-detail {
+        font-size: 0.72rem;
     }
 }
 
