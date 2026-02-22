@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>配当・権利落ち日の株価終値追加ツール</title>
+    <meta name="description" content="株配当権利日CSV/Excelファイルに終値データを自動追加するツール">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;700&display=swap"
+        rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+    <div class="app-container">
+        <!-- Header -->
+        <header class="app-header">
+            <div class="header-glow"></div>
+            <h1>
+                <span class="icon">📈</span>
+                配当・権利落ち日の株価終値追加ツール
+            </h1>
+            <p class="subtitle">CSV・Excelファイルに各銘柄の終値を自動で追加します</p>
+        </header>
+
+        <!-- Info Banner -->
+        <section class="card info-banner">
+            <p class="info-text">
+                📥 まず <a href="https://www.jpx.co.jp/listing/others/ex-rights/index.html" target="_blank"
+                    rel="noopener">JPX 権利落銘柄一覧ページ</a> からCSV/Excelファイルをダウンロードし、下記にアップロードしてください。
+            </p>
+        </section>
+
+        <!-- Upload Section -->
+        <section class="card upload-section" id="uploadSection">
+            <h2>ファイルをアップロード</h2>
+            <div class="drop-zone" id="dropZone">
+                <div class="drop-zone-content">
+                    <div class="drop-icon">
+                        <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                            <polyline points="17 8 12 3 7 8" />
+                            <line x1="12" y1="3" x2="12" y2="15" />
+                        </svg>
+                    </div>
+                    <p class="drop-text">ここにファイルをドラッグ＆ドロップ</p>
+                    <p class="drop-subtext">CSV / XLS / XLSX 対応</p>
+                    <label class="file-select-btn" for="fileInput">ファイルを選択</label>
+                    <input type="file" id="fileInput" accept=".csv,.xls,.xlsx" hidden>
+                </div>
+            </div>
+            <div class="file-info" id="fileInfo" style="display: none;">
+                <span class="file-icon">📄</span>
+                <span class="file-name" id="fileName"></span>
+                <span class="file-size" id="fileSize"></span>
+                <button class="file-remove" id="fileRemove" title="ファイルを削除">✕</button>
+            </div>
+        </section>
+
+        <!-- Settings Section -->
+        <section class="card settings-section" id="settingsSection" style="display: none;">
+            <h2>取得設定</h2>
+            <div class="settings-grid">
+                <div class="setting-item">
+                    <label for="dateColumn">終値を取得する基準日</label>
+                    <select id="dateColumn">
+                        <option value="0">基準日</option>
+                        <option value="1">(実質上)基準日</option>
+                        <option value="2" selected>権利落日(普通取引)</option>
+                        <option value="3">権利落日(その他の取引)</option>
+                    </select>
+                </div>
+                <div class="setting-item">
+                    <label>検出銘柄数</label>
+                    <div class="stat-value" id="stockCount">-</div>
+                </div>
+                <div class="setting-item">
+                    <label>ユニーク銘柄数</label>
+                    <div class="stat-value" id="uniqueStockCount">-</div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Action Section -->
+        <section class="card action-section" id="actionSection" style="display: none;">
+            <div class="action-buttons">
+                <button class="btn btn-primary" id="fetchBtn">
+                    <span class="btn-icon">🔍</span>
+                    終値を取得
+                </button>
+                <button class="btn btn-success" id="downloadBtn" disabled>
+                    <span class="btn-icon">💾</span>
+                    CSVダウンロード
+                </button>
+            </div>
+
+            <!-- Progress -->
+            <div class="progress-container" id="progressContainer" style="display: none;">
+                <div class="progress-header">
+                    <span class="progress-label" id="progressLabel">取得中...</span>
+                    <span class="progress-value" id="progressValue">0%</span>
+                </div>
+                <div class="progress-bar">
+                    <div class="progress-fill" id="progressFill"></div>
+                </div>
+                <div class="progress-detail" id="progressDetail"></div>
+            </div>
+        </section>
+
+        <!-- Results Summary -->
+        <section class="card results-section" id="resultsSection" style="display: none;">
+            <h2>取得結果</h2>
+            <div class="results-stats">
+                <div class="result-stat success">
+                    <div class="result-stat-value" id="successCount">0</div>
+                    <div class="result-stat-label">成功</div>
+                </div>
+                <div class="result-stat warning">
+                    <div class="result-stat-value" id="naCount">0</div>
+                    <div class="result-stat-label">取得不可</div>
+                </div>
+                <div class="result-stat error">
+                    <div class="result-stat-value" id="errorCount">0</div>
+                    <div class="result-stat-label">エラー</div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Data Table -->
+        <section class="card table-section" id="tableSection" style="display: none;">
+            <div class="table-header">
+                <h2>データプレビュー</h2>
+                <span class="table-badge" id="rowCount"></span>
+            </div>
+            <div class="table-wrapper">
+                <table id="dataTable">
+                    <thead id="tableHead"></thead>
+                    <tbody id="tableBody"></tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- Error Log -->
+        <section class="card error-section" id="errorSection" style="display: none;">
+            <h2>エラーログ</h2>
+            <div class="error-log" id="errorLog"></div>
+        </section>
+
+        <!-- Footer -->
+        <footer class="app-footer">
+            <p>Yahoo Finance API を利用 ・ CORSプロキシ経由</p>
+        </footer>
+    </div>
+
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+    <script src="app.js"></script>
+</body>
+
+</html>
