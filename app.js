@@ -13,6 +13,8 @@ let parsedData = null;      // { metadata: string[], header: string[], rows: str
 let closingPrices = {};     // { stockCode: { price: number|null, dividend: number|null, date: string } }
 let errorMessages = [];
 let isFetching = false;
+let sortColIdx = -1;        // 現在のソート列インデックス (-1 = ソートなし)
+let sortAsc = true;         // true = 昇順, false = 降順
 
 // ============================================
 // DOM References
@@ -417,10 +419,34 @@ function renderTable() {
         thLabels.push('終値', '配当金', '配当利回り(%)');
     }
 
-    dom.tableHead.innerHTML = '<tr>' + thLabels.map(h => `<th>${h}</th>`).join('') + '</tr>';
+    // ソートインジケーター付きヘッダーを生成
+    dom.tableHead.innerHTML = '<tr>' + thLabels.map((h, idx) => {
+        let indicator = '';
+        if (idx === sortColIdx) {
+            indicator = sortAsc ? ' ▲' : ' ▼';
+        }
+        return `<th class="sortable" data-col="${idx}">${h}<span class="sort-indicator">${indicator}</span></th>`;
+    }).join('') + '</tr>';
+
+    // ヘッダーのクリックイベントを設定
+    dom.tableHead.querySelectorAll('th.sortable').forEach(th => {
+        th.addEventListener('click', () => {
+            const colIdx = parseInt(th.dataset.col);
+            if (sortColIdx === colIdx) {
+                sortAsc = !sortAsc;
+            } else {
+                sortColIdx = colIdx;
+                sortAsc = true;
+            }
+            renderTable();
+        });
+    });
+
+    // 行をソート
+    const sortedRows = getSortedRows(rows, hasPrices);
 
     // データ行（最大200行表示）
-    const displayRows = rows.slice(0, 200);
+    const displayRows = sortedRows.slice(0, 200);
     dom.tableBody.innerHTML = displayRows.map(row => {
         const cells = row.slice(0, 9).map((cell, idx) => `<td>${escapeHTML(cell.trim())}</td>`);
 
@@ -456,6 +482,66 @@ function renderTable() {
 
     dom.rowCount.textContent = `${rows.length} 行${rows.length > 200 ? '（200行まで表示）' : ''}`;
     showSection(dom.tableSection);
+}
+
+/**
+ * 行をソートする
+ */
+function getSortedRows(rows, hasPrices) {
+    if (sortColIdx < 0) return rows;
+
+    const sorted = [...rows];
+    const colIdx = sortColIdx;
+    const baseColCount = 9; // CSVの元列数
+
+    sorted.sort((a, b) => {
+        let valA, valB;
+
+        if (colIdx < baseColCount) {
+            // CSV列のデータ
+            valA = (a[colIdx] || '').trim();
+            valB = (b[colIdx] || '').trim();
+        } else if (hasPrices) {
+            // 終値・配当金・配当利回り列
+            const codeA = (a[4] || '').trim();
+            const codeB = (b[4] || '').trim();
+            const pdA = closingPrices[codeA];
+            const pdB = closingPrices[codeB];
+
+            if (colIdx === baseColCount) {
+                // 終値
+                valA = pdA?.price ?? null;
+                valB = pdB?.price ?? null;
+            } else if (colIdx === baseColCount + 1) {
+                // 配当金
+                valA = pdA?.dividend ?? null;
+                valB = pdB?.dividend ?? null;
+            } else if (colIdx === baseColCount + 2) {
+                // 配当利回り
+                valA = (pdA?.price && pdA?.dividend && pdA.price > 0) ? (pdA.dividend / pdA.price * 100) : null;
+                valB = (pdB?.price && pdB?.dividend && pdB.price > 0) ? (pdB.dividend / pdB.price * 100) : null;
+            }
+
+            // nullは常に末尾へ
+            if (valA === null && valB === null) return 0;
+            if (valA === null) return 1;
+            if (valB === null) return -1;
+            return sortAsc ? valA - valB : valB - valA;
+        }
+
+        // 文字列比較（数値として解釈できる場合は数値比較）
+        const numA = parseFloat(valA);
+        const numB = parseFloat(valB);
+        if (!isNaN(numA) && !isNaN(numB)) {
+            return sortAsc ? numA - numB : numB - numA;
+        }
+
+        // 日付形式（YYYY/MM/DD）の場合はそのまま文字列比較でOK
+        const cmp = valA.localeCompare(valB, 'ja');
+        return sortAsc ? cmp : -cmp;
+    });
+
+    return sorted;
 }
 
 function escapeHTML(str) {

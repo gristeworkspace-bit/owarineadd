@@ -616,6 +616,24 @@ thead th {
     z-index: 1;
 }
 
+thead th.sortable {
+    cursor: pointer;
+    user-select: none;
+    transition: background var(--transition-fast), color var(--transition-fast);
+    white-space: nowrap;
+}
+
+thead th.sortable:hover {
+    background: rgba(99, 102, 241, 0.16);
+    color: var(--text-primary);
+}
+
+.sort-indicator {
+    font-size: 0.65rem;
+    margin-left: 4px;
+    color: var(--accent-cyan);
+}
+
 tbody tr {
     transition: background var(--transition-fast);
 }
