@@ -196,10 +196,51 @@ function getUniqueStocks(rows, codeColIdx, dateColIdx) {
 // ============================================
 
 /**
- * 指定ティッカーの終値と配当金を取得
+ * タイムスタンプ配列から、指定タイムスタンプに最も近い（以前の）終値を探す
+ */
+function findClosestPrice(timestamps, closes, targetTs) {
+    let bestIdx = -1;
+    let bestDiff = Infinity;
+
+    // 対象日以前で最も近いデータを優先
+    for (let i = 0; i < timestamps.length; i++) {
+        if (closes[i] === null) continue;
+        const diff = targetTs - timestamps[i];
+        if (diff >= 0 && diff < bestDiff) {
+            bestDiff = diff;
+            bestIdx = i;
+        }
+    }
+
+    // 対象日以前にない場合、以降の最も近いデータ
+    if (bestIdx === -1) {
+        for (let i = 0; i < timestamps.length; i++) {
+            if (closes[i] === null) continue;
+            const diff = Math.abs(targetTs - timestamps[i]);
+            if (diff < bestDiff) {
+                bestDiff = diff;
+                bestIdx = i;
+            }
+        }
+    }
+
+    return bestIdx >= 0 ? closes[bestIdx] : null;
+}
+
+/**
+ * 変動率を計算 (%)：(現在値 - 過去値) / 過去値 * 100
+ */
+function calcChangeRate(currentPrice, pastPrice) {
+    if (currentPrice === null || pastPrice === null || pastPrice === 0) return null;
+    return Math.round((currentPrice - pastPrice) / pastPrice * 10000) / 100;
+}
+
+/**
+ * 指定ティッカーの終値・配当金・株価変動率を取得
  */
 async function fetchClosingPrice(ticker, targetDateStr) {
-    if (!ticker) return { price: null, dividend: null, actualDate: null, error: '無効なティッカー' };
+    const nullResult = { price: null, dividend: null, actualDate: null, change1d: null, change7d: null, change14d: null, change30d: null, error: null };
+    if (!ticker) return { ...nullResult, error: '無効なティッカー' };
 
     try {
         // 日付をUNIXタイムスタンプに変換
@@ -207,8 +248,8 @@ async function fetchClosingPrice(ticker, targetDateStr) {
         const targetDate = new Date(targetDateStr.replace(/\//g, '-'));
         const targetTs = Math.floor(targetDate.getTime() / 1000);
 
-        // 対象日を含む前後14日間のデータを取得（配当イベントも含む）
-        const startTs = targetTs - 14 * 86400;
+        // 対象日の45日前〜14日後のデータを取得（1ヶ月前比較のため広めに取得）
+        const startTs = targetTs - 45 * 86400;
         const endTs = targetTs + 14 * 86400;
 
         const apiUrl = `${YAHOO_API_BASE}${encodeURIComponent(ticker)}?period1=${startTs}&period2=${endTs}&interval=1d&events=div`;
@@ -219,13 +260,13 @@ async function fetchClosingPrice(ticker, targetDateStr) {
         });
 
         if (!response.ok) {
-            return { price: null, dividend: null, actualDate: null, error: `HTTP ${response.status}` };
+            return { ...nullResult, error: `HTTP ${response.status}` };
         }
 
         const data = await response.json();
 
         if (!data.chart || !data.chart.result || data.chart.result.length === 0) {
-            return { price: null, dividend: null, actualDate: null, error: 'データなし' };
+            return { ...nullResult, error: 'データなし' };
         }
 
         const result = data.chart.result[0];
@@ -233,13 +274,19 @@ async function fetchClosingPrice(ticker, targetDateStr) {
         const closes = result.indicators?.quote?.[0]?.close || [];
 
         if (timestamps.length === 0 || closes.length === 0) {
-            return { price: null, dividend: null, actualDate: null, error: 'チャートデータなし' };
+            return { ...nullResult, error: 'チャートデータなし' };
         }
 
-        // 対象日に最も近い日を探す（対象日以前のデータ優先）
+        // 対象日の終値を探す
+        const currentPrice = findClosestPrice(timestamps, closes, targetTs);
+
+        if (currentPrice === null) {
+            return { ...nullResult, error: '有効な終値なし' };
+        }
+
+        // 対象日の実際の日付を特定
         let bestIdx = -1;
         let bestDiff = Infinity;
-
         for (let i = 0; i < timestamps.length; i++) {
             if (closes[i] === null) continue;
             const diff = targetTs - timestamps[i];
@@ -248,8 +295,6 @@ async function fetchClosingPrice(ticker, targetDateStr) {
                 bestIdx = i;
             }
         }
-
-        // 対象日以前にデータがない場合、対象日以降の最も近いデータを使う
         if (bestIdx === -1) {
             for (let i = 0; i < timestamps.length; i++) {
                 if (closes[i] === null) continue;
@@ -261,12 +306,20 @@ async function fetchClosingPrice(ticker, targetDateStr) {
             }
         }
 
-        if (bestIdx === -1) {
-            return { price: null, dividend: null, actualDate: null, error: '有効な終値なし' };
-        }
-
         const actualDate = new Date(timestamps[bestIdx] * 1000);
         const formattedDate = `${actualDate.getFullYear()}/${String(actualDate.getMonth() + 1).padStart(2, '0')}/${String(actualDate.getDate()).padStart(2, '0')}`;
+
+        // 1日前・7日前・14日前・30日前の終値を探す
+        const price1d = findClosestPrice(timestamps, closes, targetTs - 1 * 86400);
+        const price7d = findClosestPrice(timestamps, closes, targetTs - 7 * 86400);
+        const price14d = findClosestPrice(timestamps, closes, targetTs - 14 * 86400);
+        const price30d = findClosestPrice(timestamps, closes, targetTs - 30 * 86400);
+
+        // 変動率を計算
+        const change1d = calcChangeRate(currentPrice, price1d);
+        const change7d = calcChangeRate(currentPrice, price7d);
+        const change14d = calcChangeRate(currentPrice, price14d);
+        const change30d = calcChangeRate(currentPrice, price30d);
 
         // 配当金を取得（対象日に最も近い配当イベントを探す）
         let dividendAmount = null;
@@ -284,13 +337,17 @@ async function fetchClosingPrice(ticker, targetDateStr) {
         }
 
         return {
-            price: Math.round(closes[bestIdx] * 10) / 10,
+            price: Math.round(currentPrice * 10) / 10,
             dividend: dividendAmount !== null ? Math.round(dividendAmount * 100) / 100 : null,
             actualDate: formattedDate,
+            change1d,
+            change7d,
+            change14d,
+            change30d,
             error: null
         };
     } catch (err) {
-        return { price: null, dividend: null, actualDate: null, error: err.message };
+        return { ...nullResult, error: err.message };
     }
 }
 
@@ -416,7 +473,7 @@ function renderTable() {
     const hasPrices = Object.keys(closingPrices).length > 0;
     const thLabels = [...headerLabels];
     if (hasPrices) {
-        thLabels.push('終値', '配当金', '配当利回り(%)');
+        thLabels.push('終値', '配当金', '配当利回り(%)', '前日比(%)', '1週間前比(%)', '2週間前比(%)', '1ヶ月前比(%)');
     }
 
     // ソートインジケーター付きヘッダーを生成
@@ -475,6 +532,18 @@ function renderTable() {
             } else {
                 cells.push(`<td class="price-cell no-price">N/A</td>`);
             }
+
+            // 前日比・1週間前比・1ヶ月前比
+            for (const key of ['change1d', 'change7d', 'change14d', 'change30d']) {
+                const val = priceData?.[key];
+                if (val !== null && val !== undefined) {
+                    const sign = val > 0 ? '+' : '';
+                    const colorClass = val > 0 ? 'change-up' : val < 0 ? 'change-down' : '';
+                    cells.push(`<td class="price-cell has-price ${colorClass}">${sign}${val.toFixed(2)}%</td>`);
+                } else {
+                    cells.push(`<td class="price-cell no-price">N/A</td>`);
+                }
+            }
         }
 
         return '<tr>' + cells.join('') + '</tr>';
@@ -502,24 +571,41 @@ function getSortedRows(rows, hasPrices) {
             valA = (a[colIdx] || '').trim();
             valB = (b[colIdx] || '').trim();
         } else if (hasPrices) {
-            // 終値・配当金・配当利回り列
+            // 終値・配当金・配当利回り・変動率列
             const codeA = (a[4] || '').trim();
             const codeB = (b[4] || '').trim();
             const pdA = closingPrices[codeA];
             const pdB = closingPrices[codeB];
 
-            if (colIdx === baseColCount) {
+            const extraIdx = colIdx - baseColCount;
+            if (extraIdx === 0) {
                 // 終値
                 valA = pdA?.price ?? null;
                 valB = pdB?.price ?? null;
-            } else if (colIdx === baseColCount + 1) {
+            } else if (extraIdx === 1) {
                 // 配当金
                 valA = pdA?.dividend ?? null;
                 valB = pdB?.dividend ?? null;
-            } else if (colIdx === baseColCount + 2) {
+            } else if (extraIdx === 2) {
                 // 配当利回り
                 valA = (pdA?.price && pdA?.dividend && pdA.price > 0) ? (pdA.dividend / pdA.price * 100) : null;
                 valB = (pdB?.price && pdB?.dividend && pdB.price > 0) ? (pdB.dividend / pdB.price * 100) : null;
+            } else if (extraIdx === 3) {
+                // 前日比
+                valA = pdA?.change1d ?? null;
+                valB = pdB?.change1d ?? null;
+            } else if (extraIdx === 4) {
+                // 1週間前比
+                valA = pdA?.change7d ?? null;
+                valB = pdB?.change7d ?? null;
+            } else if (extraIdx === 5) {
+                // 2週間前比
+                valA = pdA?.change14d ?? null;
+                valB = pdB?.change14d ?? null;
+            } else if (extraIdx === 6) {
+                // 1ヶ月前比
+                valA = pdA?.change30d ?? null;
+                valB = pdB?.change30d ?? null;
             }
 
             // nullは常に末尾へ
@@ -569,7 +655,8 @@ function generateOutputCSV() {
     const headerLabels = [
         '基準日', '(実質上)基準日', '権利落日(普通取引)',
         '権利落日(その他の取引)', '銘柄コード', '銘柄略称',
-        '市場', '備考', '更新フラグ', '終値', '配当金', '配当利回り(%)'
+        '市場', '備考', '更新フラグ', '終値', '配当金', '配当利回り(%)',
+        '前日比(%)', '1週間前比(%)', '2週間前比(%)', '1ヶ月前比(%)'
     ];
     lines.push(headerLabels.join(','));
 
@@ -605,6 +692,12 @@ function generateOutputCSV() {
             cells.push((priceData.dividend / priceData.price * 100).toFixed(2));
         } else {
             cells.push('N/A');
+        }
+
+        // 変動率を追加
+        for (const key of ['change1d', 'change7d', 'change14d', 'change30d']) {
+            const val = priceData?.[key];
+            cells.push(val !== null && val !== undefined ? val.toFixed(2) : 'N/A');
         }
 
         lines.push(cells.join(','));

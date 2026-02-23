@@ -672,6 +672,15 @@ td.price-cell.loading {
     color: var(--accent-indigo);
 }
 
+/* Price change rate columns */
+td.price-cell.change-up {
+    color: #22c55e;
+}
+
+td.price-cell.change-down {
+    color: #ef4444;
+}
+
 /* ============================================
    Error Log
    ============================================ */
