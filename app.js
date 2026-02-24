@@ -196,9 +196,9 @@ function getUniqueStocks(rows, codeColIdx, dateColIdx) {
 // ============================================
 
 /**
- * タイムスタンプ配列から、指定タイムスタンプに最も近い（以前の）終値を探す
+ * タイムスタンプ配列から、指定タイムスタンプに最も近い（以前の）終値とインデックスを探す
  */
-function findClosestPrice(timestamps, closes, targetTs) {
+function findClosestPriceWithIndex(timestamps, closes, targetTs) {
     let bestIdx = -1;
     let bestDiff = Infinity;
 
@@ -224,7 +224,28 @@ function findClosestPrice(timestamps, closes, targetTs) {
         }
     }
 
-    return bestIdx >= 0 ? closes[bestIdx] : null;
+    return { price: bestIdx >= 0 ? closes[bestIdx] : null, index: bestIdx };
+}
+
+/**
+ * 後方互換用ラッパー
+ */
+function findClosestPrice(timestamps, closes, targetTs) {
+    return findClosestPriceWithIndex(timestamps, closes, targetTs).price;
+}
+
+/**
+ * baseIdx から n 取引日前の終値を取得する
+ * （nullでない終値のみをカウント）
+ */
+function findPriceNTradingDaysBack(closes, baseIdx, n) {
+    let count = 0;
+    for (let i = baseIdx - 1; i >= 0; i--) {
+        if (closes[i] === null) continue;
+        count++;
+        if (count === n) return closes[i];
+    }
+    return null;
 }
 
 /**
@@ -277,43 +298,22 @@ async function fetchClosingPrice(ticker, targetDateStr) {
             return { ...nullResult, error: 'チャートデータなし' };
         }
 
-        // 対象日の終値を探す
-        const currentPrice = findClosestPrice(timestamps, closes, targetTs);
+        // 対象日の終値とインデックスを探す
+        const { price: currentPrice, index: baseIdx } = findClosestPriceWithIndex(timestamps, closes, targetTs);
 
-        if (currentPrice === null) {
+        if (currentPrice === null || baseIdx === -1) {
             return { ...nullResult, error: '有効な終値なし' };
         }
 
-        // 対象日の実際の日付を特定
-        let bestIdx = -1;
-        let bestDiff = Infinity;
-        for (let i = 0; i < timestamps.length; i++) {
-            if (closes[i] === null) continue;
-            const diff = targetTs - timestamps[i];
-            if (diff >= 0 && diff < bestDiff) {
-                bestDiff = diff;
-                bestIdx = i;
-            }
-        }
-        if (bestIdx === -1) {
-            for (let i = 0; i < timestamps.length; i++) {
-                if (closes[i] === null) continue;
-                const diff = Math.abs(targetTs - timestamps[i]);
-                if (diff < bestDiff) {
-                    bestDiff = diff;
-                    bestIdx = i;
-                }
-            }
-        }
-
-        const actualDate = new Date(timestamps[bestIdx] * 1000);
+        const actualDate = new Date(timestamps[baseIdx] * 1000);
         const formattedDate = `${actualDate.getFullYear()}/${String(actualDate.getMonth() + 1).padStart(2, '0')}/${String(actualDate.getDate()).padStart(2, '0')}`;
 
-        // 1日前・7日前・14日前・30日前の終値を探す
-        const price1d = findClosestPrice(timestamps, closes, targetTs - 1 * 86400);
-        const price7d = findClosestPrice(timestamps, closes, targetTs - 7 * 86400);
-        const price14d = findClosestPrice(timestamps, closes, targetTs - 14 * 86400);
-        const price30d = findClosestPrice(timestamps, closes, targetTs - 30 * 86400);
+        // 取引日ベースで過去の終値を探す
+        // 前日比: 1取引日前, 1週間前比: 5取引日前, 2週間前比: 10取引日前, 1ヶ月前比: 21取引日前
+        const price1d = findPriceNTradingDaysBack(closes, baseIdx, 1);
+        const price7d = findPriceNTradingDaysBack(closes, baseIdx, 5);
+        const price14d = findPriceNTradingDaysBack(closes, baseIdx, 10);
+        const price30d = findPriceNTradingDaysBack(closes, baseIdx, 21);
 
         // 変動率を計算
         const change1d = calcChangeRate(currentPrice, price1d);
@@ -866,7 +866,9 @@ dom.dropZone.addEventListener('drop', (e) => {
     if (files.length > 0) handleFile(files[0]);
 });
 
-dom.dropZone.addEventListener('click', () => {
+dom.dropZone.addEventListener('click', (e) => {
+    // label や input 自体のクリックはブラウザが処理するので二重発火を防止
+    if (e.target.closest('label') || e.target === dom.fileInput) return;
     dom.fileInput.click();
 });
 
