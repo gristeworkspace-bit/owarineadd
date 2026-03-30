@@ -260,7 +260,7 @@ function calcChangeRate(currentPrice, pastPrice) {
  * 指定ティッカーの終値・配当金・株価変動率を取得
  */
 async function fetchClosingPrice(ticker, targetDateStr) {
-    const nullResult = { price: null, dividend: null, actualDate: null, change1d: null, change7d: null, change14d: null, change30d: null, error: null };
+    const nullResult = { price: null, dividend: null, actualDate: null, change1d: null, change7d: null, change14d: null, change30d: null, vwap: null, vwapDeviation: null, error: null };
     if (!ticker) return { ...nullResult, error: '無効なティッカー' };
 
     try {
@@ -292,7 +292,11 @@ async function fetchClosingPrice(ticker, targetDateStr) {
 
         const result = data.chart.result[0];
         const timestamps = result.timestamp || [];
-        const closes = result.indicators?.quote?.[0]?.close || [];
+        const quote = result.indicators?.quote?.[0] || {};
+        const closes = quote.close || [];
+        const highs = quote.high || [];
+        const lows = quote.low || [];
+        const volumes = quote.volume || [];
 
         if (timestamps.length === 0 || closes.length === 0) {
             return { ...nullResult, error: 'チャートデータなし' };
@@ -321,6 +325,16 @@ async function fetchClosingPrice(ticker, targetDateStr) {
         const change14d = calcChangeRate(currentPrice, price14d);
         const change30d = calcChangeRate(currentPrice, price30d);
 
+        // VWAP計算：対象日当日のデータのみ使用
+        // 日足データの場合は当日の TP=(H+L+C)/3 × Volume で計算
+        let vwap = null;
+        let vwapDeviation = null;
+        if (baseIdx >= 0 && highs[baseIdx] !== null && lows[baseIdx] !== null && closes[baseIdx] !== null && volumes[baseIdx] !== null && volumes[baseIdx] > 0) {
+            const tp = (highs[baseIdx] + lows[baseIdx] + closes[baseIdx]) / 3;
+            vwap = Math.round(tp * 10) / 10;
+            vwapDeviation = Math.round((currentPrice - vwap) / vwap * 10000) / 100;
+        }
+
         // 配当金を取得（対象日に最も近い配当イベントを探す）
         let dividendAmount = null;
         const dividends = result.events?.dividends;
@@ -344,6 +358,8 @@ async function fetchClosingPrice(ticker, targetDateStr) {
             change7d,
             change14d,
             change30d,
+            vwap,
+            vwapDeviation,
             error: null
         };
     } catch (err) {
@@ -473,7 +489,7 @@ function renderTable() {
     const hasPrices = Object.keys(closingPrices).length > 0;
     const thLabels = [...headerLabels];
     if (hasPrices) {
-        thLabels.push('終値', '配当金', '配当利回り(%)', '前日比(%)', '1週間前比(%)', '2週間前比(%)', '1ヶ月前比(%)');
+        thLabels.push('終値', '配当金', '配当利回り(%)', '前日比(%)', '1週間前比(%)', '2週間前比(%)', '1ヶ月前比(%)', 'VWAP', 'VWAP乖離率(%)');
     }
 
     // ソートインジケーター付きヘッダーを生成
@@ -544,6 +560,22 @@ function renderTable() {
                     cells.push(`<td class="price-cell no-price">N/A</td>`);
                 }
             }
+
+            // VWAP
+            if (priceData && priceData.vwap !== null) {
+                cells.push(`<td class="price-cell has-price">${priceData.vwap.toLocaleString()}</td>`);
+            } else {
+                cells.push(`<td class="price-cell no-price">N/A</td>`);
+            }
+
+            // VWAP乖離率
+            if (priceData && priceData.vwapDeviation !== null) {
+                const sign = priceData.vwapDeviation > 0 ? '+' : '';
+                const colorClass = priceData.vwapDeviation > 0 ? 'change-up' : priceData.vwapDeviation < 0 ? 'change-down' : '';
+                cells.push(`<td class="price-cell has-price ${colorClass}">${sign}${priceData.vwapDeviation.toFixed(2)}%</td>`);
+            } else {
+                cells.push(`<td class="price-cell no-price">N/A</td>`);
+            }
         }
 
         return '<tr>' + cells.join('') + '</tr>';
@@ -606,6 +638,14 @@ function getSortedRows(rows, hasPrices) {
                 // 1ヶ月前比
                 valA = pdA?.change30d ?? null;
                 valB = pdB?.change30d ?? null;
+            } else if (extraIdx === 7) {
+                // VWAP
+                valA = pdA?.vwap ?? null;
+                valB = pdB?.vwap ?? null;
+            } else if (extraIdx === 8) {
+                // VWAP乖離率
+                valA = pdA?.vwapDeviation ?? null;
+                valB = pdB?.vwapDeviation ?? null;
             }
 
             // nullは常に末尾へ
@@ -656,7 +696,8 @@ function generateOutputCSV() {
         '基準日', '(実質上)基準日', '権利落日(普通取引)',
         '権利落日(その他の取引)', '銘柄コード', '銘柄略称',
         '市場', '備考', '更新フラグ', '終値', '配当金', '配当利回り(%)',
-        '前日比(%)', '1週間前比(%)', '2週間前比(%)', '1ヶ月前比(%)'
+        '前日比(%)', '1週間前比(%)', '2週間前比(%)', '1ヶ月前比(%)',
+        'VWAP', 'VWAP乖離率(%)'
     ];
     lines.push(headerLabels.join(','));
 
@@ -698,6 +739,20 @@ function generateOutputCSV() {
         for (const key of ['change1d', 'change7d', 'change14d', 'change30d']) {
             const val = priceData?.[key];
             cells.push(val !== null && val !== undefined ? val.toFixed(2) : 'N/A');
+        }
+
+        // VWAP
+        if (priceData && priceData.vwap !== null) {
+            cells.push(String(priceData.vwap));
+        } else {
+            cells.push('N/A');
+        }
+
+        // VWAP乖離率
+        if (priceData && priceData.vwapDeviation !== null) {
+            cells.push(priceData.vwapDeviation.toFixed(2));
+        } else {
+            cells.push('N/A');
         }
 
         lines.push(cells.join(','));
